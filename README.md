@@ -49,7 +49,7 @@ Validare: express-validator pentru validarea datelor la nivelul API-ului.
 
 Model de date - Tabele: users, tasks
 
-Flux de lucru(workflow): 
+Fluxul aplicatiei(workflow): 
 1. Administratorul adaugă utilizatori și stabilește rolurile.
 2. Managerul creează un task → starea OPEN.
 3. Managerul alocă un task unui executant → starea PENDING
@@ -58,7 +58,13 @@ Flux de lucru(workflow):
 6. Utilizatorii pot consulta istoricul task-urilor proprii.
 7. Managerul poate consulta istoricul task-urilor fiecărui executant.
 
-
+Plan de implementare:
+Faza 0-Creare repository, detaliere fluxuri principale , alegerea functionalitatiloe optionale si design orientativ in Figma
+Faza 1-Realizarea serviciului REST si interfata minia
+Faza 2-Finalizarea interfete pentru toate rolurile(admin, manager, executant) si API pe server
+Faza 3-testarea completa a aplicatiei
+Faza 4-Implementarea functionalitatilor optionale pentru imbunatatirea aplicatiei
+Faza 5-Prezentarea proiectului
 
 
  
