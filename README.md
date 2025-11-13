@@ -1,10 +1,10 @@
 # MysticMinds_Task_Planner_and_Tracker
 
-Scopul proiectului este realizarea unei aplicații web moderne care să permită planificarea, alocarea și monitorizarea activităților (task-urilor) desfășurate într-o echipă.
+Scopul proiectului este realizarea unei aplicații web care să permită planificarea, alocarea și monitorizarea activităților (task-urilor) desfășurate într-o echipă.
 Aplicația oferă un spațiu centralizat pentru colaborare, urmărirea progresului și vizualizarea istoricului sarcinilor, optimizând comunicarea între administratori, manageri și executanți.
 Aplicația este concepută sub forma unei Single Page Application (SPA), disponibilă în browser.
 
-Specificatii: 
+ Functionalitati: 
 1. Gestionare utilizatori: Aplicația are o serie de utilizatori, dintre care unii sunt marcați ca manageri, iar ceilalți ca executanți.
 2. Functie Administrator: Aplicația are un administrator, care poate adăuga utilizatori și le poate seta rolul (manager sau executant). Administratorul are acces complet la gestionarea conturilor.
 3. Alocare manager pentru executant: Un utilizator care nu este manager are obligatoriu un manager alocat, pentru a putea primi task-uri.
@@ -15,7 +15,9 @@ Specificatii:
 8. Închidere task: Un manager poate marca un task aflat în starea COMPLETED ca fiind CLOSED, confirmând finalizarea completă a acestuia.
 9. Istoric utilizator: Un utilizator (manager sau executant) poate consulta lista sa istorică de task-uri finalizate sau închise.
 10. Istoric manager – executant: Un manager poate consulta lista istorică de task-uri pentru fiecare executant din subordine.
-    
+
+Functionalitati opționale:
+1. Tag de prioritate pentru task-uri     
 
 Arhitectura Aplicației: Sistemul este structurat pe trei componente majore, care comunică asincron:
 
