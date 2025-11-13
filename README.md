@@ -16,8 +16,10 @@ Aplicația este concepută sub forma unei Single Page Application (SPA), disponi
 9. Istoric utilizator: Un utilizator (manager sau executant) poate consulta lista sa istorică de task-uri finalizate sau închise.
 10. Istoric manager – executant: Un manager poate consulta lista istorică de task-uri pentru fiecare executant din subordine.
 
-Functionalitati opționale:
-1. Tag de prioritate pentru task-uri     
+Functionalitati optionale:
+1.Camp de prioritate pentru taskuri(LOW, MEDIUM, HIGH, URGENT)
+2.Deadline si estimare de timp, camp dueDate si estimatedHours
+
 
 Arhitectura Aplicației: Sistemul este structurat pe trei componente majore, care comunică asincron:
 
@@ -57,13 +59,9 @@ Flux de lucru(workflow):
 7. Managerul poate consulta istoricul task-urilor fiecărui executant.
 
 
- Criterii de calitate
-1. Codul este modular, clar și documentat;
-2. Standardizare naming: camelCase pentru variabile și funcții;
-3. Comentarii explicative pentru metode și endpoint-uri;
-4. Mesaje de commit specifice;
-5. Interfață responsivă, intuitivă și ușor de utilizat;
 
+
+ 
 
 
 
