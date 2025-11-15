@@ -1,5 +1,4 @@
-#  Numele echipei: MysticMinds
-Tema proiectului: Task Planner and Tracker
+#   MysticMinds -  Task Planner and Tracker
 
 Membrii echipei: Bogdan Mihaela, Bostan Francesca-Maria, Bunduc Maria-Magdalena
 Grupa 1085; Seria C
