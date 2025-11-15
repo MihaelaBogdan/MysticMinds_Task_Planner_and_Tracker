@@ -1,4 +1,8 @@
-# MysticMinds_Task_Planner_and_Tracker
+#  Numele echipei: MysticMinds
+Tema proiectului: Task Planner and Tracker
+
+Membrii echipei: Bogdan Mihaela, Bostan Francesca-Maria, Bunduc Maria-Magdalena
+Grupa 1085; Seria C
 
 Scopul proiectului este realizarea unei aplicații web care să permită planificarea, alocarea și monitorizarea activităților (task-urilor) desfășurate într-o echipă.
 Aplicația oferă un spațiu centralizat pentru colaborare, urmărirea progresului și vizualizarea istoricului sarcinilor, optimizând comunicarea între administratori, manageri și executanți.
@@ -22,11 +26,8 @@ Functionalitati optionale:
 
 
 Arhitectura Aplicației: Sistemul este structurat pe trei componente majore, care comunică asincron:
-
 1. Frontend (Client): React.js
-
 2. REST API (Server): Node.js + Express
-
 3. Bază de Date: MySQL
    
 
