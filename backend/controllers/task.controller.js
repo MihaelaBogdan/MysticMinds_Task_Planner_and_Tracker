@@ -1,4 +1,4 @@
-// LISTĂ TASK-URI
+
 exports.getAllTasks = (req, res, db) => {
     db.query(
         "SELECT * FROM tasks ORDER BY created_at DESC",
