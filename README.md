@@ -9,7 +9,7 @@ Aplicația este concepută sub forma unei Single Page Application (SPA), disponi
 
  Functionalitati: 
 1. Gestionare utilizatori: Aplicația are o serie de utilizatori, dintre care unii sunt marcați ca manageri, iar ceilalți ca executanți.
-2. Functie Administrator: Aplicația are un administrator, care poate adăuga utilizatori și le poate seta rolul (manager sau executant). Administratorul are acces complet la gestionarea conturilor.
+2. Functie Administrator: Aplicația are un administrator, care poate adăuga utilizatori și le poate seta rolul (manager sau executant). Administratorul are acces complet la gestionarea conturilor. **De asemenea, administratorul poate promova executanți în rolul de manager și poate reasigna executanți de la un manager la altul.**
 3. Alocare manager pentru executant: Un utilizator care nu este manager are obligatoriu un manager alocat, pentru a putea primi task-uri.
 4. Creare task: Un manager poate crea un task, oferind o descriere suficient de detaliată pentru ca executantul să poată realiza sarcina. La creare, task-ul are starea OPEN.
 5.Alocare task: Managerul poate aloca un task unui utilizator (executant). În acest moment, starea task-ului devine PENDING.
@@ -50,7 +50,7 @@ Validare: express-validator pentru validarea datelor la nivelul API-ului.
 Model de date - Tabele: users, tasks
 
 Fluxul aplicatiei(workflow): 
-1. Administratorul adaugă utilizatori și stabilește rolurile.
+1. Administratorul adaugă utilizatori și stabilește rolurile. **(Poate promova/reasigna utilizatori)**
 2. Managerul creează un task → starea OPEN.
 3. Managerul alocă un task unui executant → starea PENDING
 4. Executantul finalizează task-ul → starea COMPLETED.
@@ -65,10 +65,3 @@ Faza 2-Finalizarea interfete pentru toate rolurile(admin, manager, executant) si
 Faza 3-testarea completa a aplicatiei
 Faza 4-Implementarea functionalitatilor optionale pentru imbunatatirea aplicatiei
 Faza 5-Prezentarea proiectului
-
-
- 
-
-
-
-
