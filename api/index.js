@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
+const fs = require('fs');
+const path = require('path');
 const { sequelize, User, Task, Comment } = require('./models');
 const { authenticate, authorize } = require('./middleware/auth');
 
@@ -11,20 +13,42 @@ const JWT_SECRET = process.env.JWT_SECRET || 'mystic_minds_secret_key_2024';
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// Initialize database connection
+// ===== DATABASE INITIALIZATION FOR VERCEL =====
 let dbInitialized = false;
+
 const initDb = async () => {
-    if (!dbInitialized) {
-        try {
-            await sequelize.authenticate();
-            dbInitialized = true;
-        } catch (error) {
-            console.error('Database connection error:', error);
+    if (dbInitialized) return;
+
+    try {
+        // If on Vercel, we need to copy the DB to /tmp to make it writable
+        // This is a "hack" for serverless SQLite to work without external DB
+        if (process.env.VERCEL) {
+            const tmpDbPath = path.join('/tmp', 'database.sqlite');
+            const sourceDbPath = path.join(__dirname, 'database.sqlite');
+
+            // Only copy if it doesn't exist in tmp (preserves data during hot execution)
+            if (!fs.existsSync(tmpDbPath)) {
+                if (fs.existsSync(sourceDbPath)) {
+                    console.log('Copying database to writable /tmp directory...');
+                    fs.copyFileSync(sourceDbPath, tmpDbPath);
+                } else {
+                    console.log('No source database found, creating new one in /tmp...');
+                }
+            }
         }
+
+        await sequelize.authenticate();
+        // Sync models to ensure tables exist
+        await sequelize.sync();
+
+        console.log('Database connected successfully.');
+        dbInitialized = true;
+    } catch (error) {
+        console.error('Database connection error:', error);
     }
 };
 
-// Middleware to ensure DB is connected
+// Middleware to ensure DB is connected before every request
 app.use(async (req, res, next) => {
     await initDb();
     next();
