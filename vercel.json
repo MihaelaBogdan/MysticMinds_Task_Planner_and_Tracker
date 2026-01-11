@@ -1,6 +1,6 @@
 {
     "version": 2,
-    "buildCommand": "cd frontend && npm install && npx vite build",
+    "buildCommand": "cd frontend && npm install --include=dev && npx vite build",
     "outputDirectory": "frontend/dist",
     "functions": {
         "api/index.js": {
