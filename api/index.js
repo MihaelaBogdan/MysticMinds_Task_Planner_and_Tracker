@@ -1,70 +1,34 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
+const { sequelize, User, Task, Comment } = require('./models');
+const { authenticate, authorize } = require('./middleware/auth');
 
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'mystic_minds_secret_key_2024';
 
-// In-memory storage for serverless (data will reset on cold starts)
-let users = [
-    { id: 1, username: 'admin', email: 'admin@taskflow.com', password: '$2a$10$rGn6TwJqTH3NxJf0ZY.xyO4gXBIzLxPxvLHXxJxvxJxvxJxvxJxvx', role: 'admin', managerId: null, createdAt: new Date().toISOString() },
-    { id: 2, username: 'manager1', email: 'manager@taskflow.com', password: '$2a$10$rGn6TwJqTH3NxJf0ZY.xyO4gXBIzLxPxvLHXxJxvxJxvxJxvxJxvx', role: 'manager', managerId: null, createdAt: new Date().toISOString() },
-    { id: 3, username: 'executor1', email: 'executor@taskflow.com', password: '$2a$10$rGn6TwJqTH3NxJf0ZY.xyO4gXBIzLxPxvLHXxJxvxJxvxJxvxJxvx', role: 'executor', managerId: 2, createdAt: new Date().toISOString() }
-];
-let tasks = [];
-let comments = [];
-let taskIdCounter = 1;
-let userIdCounter = 4;
-let commentIdCounter = 1;
-
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// ===== HELPER FUNCTIONS =====
-const getUser = (id) => users.find(u => u.id === parseInt(id));
-const getUserByEmail = (email) => users.find(u => u.email === email);
-const getTask = (id) => tasks.find(t => t.id === parseInt(id));
-
-const enrichTask = (task) => {
-    const creator = getUser(task.createdById);
-    const assignee = task.assignedToId ? getUser(task.assignedToId) : null;
-    return {
-        ...task,
-        creator: creator ? { id: creator.id, username: creator.username, email: creator.email } : null,
-        assignee: assignee ? { id: assignee.id, username: assignee.username, email: assignee.email } : null
-    };
-};
-
-const enrichUser = (user) => {
-    const manager = user.managerId ? getUser(user.managerId) : null;
-    const { password, ...safeUser } = user;
-    return {
-        ...safeUser,
-        manager: manager ? { id: manager.id, username: manager.username, email: manager.email } : null
-    };
-};
-
-// ===== AUTH MIDDLEWARE =====
-const authenticate = (req, res, next) => {
-    try {
-        const token = req.headers.authorization?.split(' ')[1];
-        if (!token) return res.status(401).json({ success: false, message: 'No token provided' });
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = users.find(u => u.id === decoded.id);
-        if (!req.user) return res.status(401).json({ success: false, message: 'User not found' });
-        next();
-    } catch (err) {
-        res.status(401).json({ success: false, message: 'Invalid token' });
+// Initialize database connection
+let dbInitialized = false;
+const initDb = async () => {
+    if (!dbInitialized) {
+        try {
+            await sequelize.authenticate();
+            dbInitialized = true;
+        } catch (error) {
+            console.error('Database connection error:', error);
+        }
     }
 };
 
-const authorize = (...roles) => (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-        return res.status(403).json({ success: false, message: 'Access denied.' });
-    }
+// Middleware to ensure DB is connected
+app.use(async (req, res, next) => {
+    await initDb();
     next();
-};
+});
 
 // ===== HEALTH CHECK =====
 app.get('/api/health', (req, res) => {
@@ -79,16 +43,22 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Email and password are required.' });
         }
 
-        const user = users.find(u => u.email === email);
-        if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        const user = await User.findOne({
+            where: { email },
+            include: [{ model: User, as: 'manager', attributes: ['id', 'username', 'email'] }]
+        });
 
-        // For demo, accept common passwords or check bcrypt
-        const isMatch = password === 'admin123' || password === 'password123' || await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        }
+
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        }
 
         const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 
-        const manager = user.managerId ? getUser(user.managerId) : null;
         res.json({
             success: true,
             message: 'Authentication successful!',
@@ -99,7 +69,7 @@ app.post('/api/auth/login', async (req, res) => {
                     username: user.username,
                     email: user.email,
                     role: user.role,
-                    manager: manager ? { id: manager.id, username: manager.username, email: manager.email } : null
+                    manager: user.manager
                 }
             }
         });
@@ -126,33 +96,29 @@ app.post('/api/auth/register', authenticate, authorize('admin'), async (req, res
         }
 
         if (managerId) {
-            const manager = getUser(managerId);
+            const manager = await User.findByPk(managerId);
             if (!manager || manager.role !== 'manager') {
                 return res.status(400).json({ success: false, message: 'Invalid manager ID.' });
             }
         }
 
-        const existingUser = getUserByEmail(email);
+        const existingUser = await User.findOne({ where: { email } });
         if (existingUser) {
             return res.status(400).json({ success: false, message: 'A user with this email already exists.' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = {
-            id: userIdCounter++,
+        const user = await User.create({
             username,
             email,
-            password: hashedPassword,
+            password,
             role,
-            managerId: role === 'executor' ? parseInt(managerId) : null,
-            createdAt: new Date().toISOString()
-        };
-        users.push(newUser);
+            managerId: role === 'executor' ? managerId : null
+        });
 
         res.status(201).json({
             success: true,
             message: 'User created successfully!',
-            data: { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role, managerId: newUser.managerId }
+            data: { id: user.id, username: user.username, email: user.email, role: user.role, managerId: user.managerId }
         });
     } catch (err) {
         console.error('Register error:', err);
@@ -168,31 +134,28 @@ app.post('/api/auth/register/public', async (req, res) => {
             return res.status(400).json({ success: false, message: 'All fields are required.' });
         }
 
-        const manager = users.find(u => u.email === managerEmail && u.role === 'manager');
+        const manager = await User.findOne({ where: { email: managerEmail, role: 'manager' } });
         if (!manager) {
             return res.status(400).json({ success: false, message: 'No manager found with this email.' });
         }
 
-        if (getUserByEmail(email)) {
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
             return res.status(400).json({ success: false, message: 'An account with this email already exists.' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = {
-            id: userIdCounter++,
+        const user = await User.create({
             username,
             email,
-            password: hashedPassword,
+            password,
             role: 'executor',
-            managerId: manager.id,
-            createdAt: new Date().toISOString()
-        };
-        users.push(newUser);
+            managerId: manager.id
+        });
 
         res.status(201).json({
             success: true,
             message: `Account created successfully! You have been assigned to manager ${manager.username}.`,
-            data: { id: newUser.id, username: newUser.username, email: newUser.email, role: newUser.role, managerId: manager.id, managerName: manager.username }
+            data: { id: user.id, username: user.username, email: user.email, role: user.role, managerId: manager.id, managerName: manager.username }
         });
     } catch (err) {
         console.error('Public register error:', err);
@@ -200,385 +163,580 @@ app.post('/api/auth/register/public', async (req, res) => {
     }
 });
 
-app.get('/api/auth/me', authenticate, (req, res) => {
-    res.json({ success: true, data: enrichUser(req.user) });
+app.get('/api/auth/me', authenticate, async (req, res) => {
+    try {
+        const user = await User.findByPk(req.user.id, {
+            attributes: { exclude: ['password'] },
+            include: [{ model: User, as: 'manager', attributes: ['id', 'username', 'email'] }]
+        });
+        res.json({ success: true, data: user });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
 // ===== USER ROUTES =====
-app.get('/api/users', authenticate, authorize('admin'), (req, res) => {
-    const safeUsers = users.map(enrichUser);
-    res.json({ success: true, data: safeUsers });
-});
-
-app.get('/api/users/managers', authenticate, (req, res) => {
-    const managers = users.filter(u => u.role === 'manager').map(enrichUser);
-    res.json({ success: true, data: managers });
-});
-
-app.get('/api/users/executors', authenticate, (req, res) => {
-    let executors;
-    if (req.user.role === 'manager') {
-        executors = users.filter(u => u.role === 'executor' && u.managerId === req.user.id);
-    } else {
-        executors = users.filter(u => u.role === 'executor');
+app.get('/api/users', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const users = await User.findAll({
+            attributes: { exclude: ['password'] },
+            include: [{ model: User, as: 'manager', attributes: ['id', 'username', 'email'] }],
+            order: [['createdAt', 'DESC']]
+        });
+        res.json({ success: true, data: users });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-    res.json({ success: true, data: executors.map(enrichUser) });
 });
 
-app.get('/api/users/:id', authenticate, authorize('admin'), (req, res) => {
-    const user = getUser(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    res.json({ success: true, data: enrichUser(user) });
-});
-
-app.delete('/api/users/:id', authenticate, authorize('admin'), (req, res) => {
-    const userId = parseInt(req.params.id);
-    const user = getUser(userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (user.role === 'admin') return res.status(403).json({ success: false, message: 'Cannot delete admin user.' });
-
-    // Delete associated tasks
-    tasks = tasks.filter(t => t.createdById !== userId && t.assignedToId !== userId);
-    // Delete user
-    users = users.filter(u => u.id !== userId);
-
-    res.json({ success: true, message: 'User and associated tasks deleted successfully.' });
-});
-
-app.patch('/api/users/:id/promote', authenticate, authorize('admin'), (req, res) => {
-    const user = getUser(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (user.role !== 'executor') return res.status(400).json({ success: false, message: 'Only executors can be promoted.' });
-
-    user.role = 'manager';
-    user.managerId = null;
-    res.json({ success: true, message: 'User promoted to manager successfully.', data: enrichUser(user) });
-});
-
-app.patch('/api/users/:id/reassign', authenticate, authorize('admin'), (req, res) => {
-    const { managerId } = req.body;
-    const user = getUser(req.params.id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (user.role !== 'executor') return res.status(400).json({ success: false, message: 'Only executors can be reassigned.' });
-
-    const newManager = getUser(managerId);
-    if (!newManager || newManager.role !== 'manager') return res.status(400).json({ success: false, message: 'Invalid manager.' });
-
-    user.managerId = parseInt(managerId);
-    res.json({ success: true, message: 'Executor reassigned successfully.', data: enrichUser(user) });
-});
-
-app.get('/api/users/:id/tasks', authenticate, authorize('admin'), (req, res) => {
-    const userId = parseInt(req.params.id);
-    const user = getUser(userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    let userTasks;
-    if (user.role === 'manager') {
-        userTasks = tasks.filter(t => t.createdById === userId);
-    } else {
-        userTasks = tasks.filter(t => t.assignedToId === userId || t.createdById === userId);
+app.get('/api/users/managers', authenticate, async (req, res) => {
+    try {
+        const managers = await User.findAll({
+            where: { role: 'manager' },
+            attributes: { exclude: ['password'] },
+            order: [['username', 'ASC']]
+        });
+        res.json({ success: true, data: managers });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
+});
 
-    res.json({ success: true, data: userTasks.map(enrichTask) });
+app.get('/api/users/executors', authenticate, async (req, res) => {
+    try {
+        let whereClause = { role: 'executor' };
+        if (req.user.role === 'manager') {
+            whereClause.managerId = req.user.id;
+        }
+        const executors = await User.findAll({
+            where: whereClause,
+            attributes: { exclude: ['password'] },
+            order: [['username', 'ASC']]
+        });
+        res.json({ success: true, data: executors });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.get('/api/users/:id', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id, {
+            attributes: { exclude: ['password'] },
+            include: [{ model: User, as: 'manager', attributes: ['id', 'username', 'email'] }]
+        });
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        res.json({ success: true, data: user });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.delete('/api/users/:id', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        if (user.role === 'admin') return res.status(403).json({ success: false, message: 'Cannot delete admin user.' });
+
+        await Task.destroy({ where: { [Op.or]: [{ createdById: user.id }, { assignedToId: user.id }] } });
+        await user.destroy();
+
+        res.json({ success: true, message: 'User and associated tasks deleted successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.patch('/api/users/:id/promote', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const user = await User.findByPk(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        if (user.role !== 'executor') return res.status(400).json({ success: false, message: 'Only executors can be promoted.' });
+
+        await user.update({ role: 'manager', managerId: null });
+        res.json({ success: true, message: 'User promoted to manager successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.patch('/api/users/:id/reassign', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const { managerId } = req.body;
+        const user = await User.findByPk(req.params.id);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+        if (user.role !== 'executor') return res.status(400).json({ success: false, message: 'Only executors can be reassigned.' });
+
+        const newManager = await User.findByPk(managerId);
+        if (!newManager || newManager.role !== 'manager') return res.status(400).json({ success: false, message: 'Invalid manager.' });
+
+        await user.update({ managerId });
+        res.json({ success: true, message: 'Executor reassigned successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.get('/api/users/:id/tasks', authenticate, authorize('admin'), async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id);
+        const user = await User.findByPk(userId);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+
+        let whereClause = {};
+        if (user.role === 'manager') {
+            whereClause.createdById = userId;
+        } else {
+            whereClause[Op.or] = [{ assignedToId: userId }, { createdById: userId }];
+        }
+
+        const tasks = await Task.findAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        res.json({ success: true, data: tasks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
 // ===== TASK ROUTES =====
-app.get('/api/tasks', authenticate, (req, res) => {
-    const { status, priority, view } = req.query;
-    let userTasks = tasks;
+app.get('/api/tasks', authenticate, async (req, res) => {
+    try {
+        const { status, priority, view } = req.query;
+        let whereClause = {};
 
-    if (req.user.role === 'manager') {
-        const executorIds = users.filter(u => u.managerId === req.user.id).map(u => u.id);
-        userTasks = tasks.filter(t => t.createdById === req.user.id || executorIds.includes(t.assignedToId));
-    } else if (req.user.role === 'executor') {
-        if (view === 'created') {
-            userTasks = tasks.filter(t => t.createdById === req.user.id);
-        } else if (view === 'assigned') {
-            userTasks = tasks.filter(t => t.assignedToId === req.user.id);
-        } else {
-            userTasks = tasks.filter(t => t.assignedToId === req.user.id || t.createdById === req.user.id);
+        if (req.user.role === 'manager') {
+            const executors = await User.findAll({ where: { managerId: req.user.id } });
+            const executorIds = executors.map(e => e.id);
+            whereClause[Op.or] = [
+                { createdById: req.user.id },
+                { assignedToId: { [Op.in]: executorIds } }
+            ];
+        } else if (req.user.role === 'executor') {
+            if (view === 'created') {
+                whereClause.createdById = req.user.id;
+            } else if (view === 'assigned') {
+                whereClause.assignedToId = req.user.id;
+            } else {
+                whereClause[Op.or] = [{ assignedToId: req.user.id }, { createdById: req.user.id }];
+            }
         }
+
+        if (status) whereClause.status = status;
+        if (priority) whereClause.priority = priority;
+
+        const tasks = await Task.findAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        res.json({ success: true, data: tasks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-
-    if (status) userTasks = userTasks.filter(t => t.status === status);
-    if (priority) userTasks = userTasks.filter(t => t.priority === priority);
-
-    res.json({ success: true, data: userTasks.map(enrichTask) });
 });
 
-app.post('/api/tasks', authenticate, authorize('manager', 'executor'), (req, res) => {
-    const { title, description, priority, dueDate } = req.body;
+app.post('/api/tasks', authenticate, authorize('manager', 'executor'), async (req, res) => {
+    try {
+        const { title, description, priority, dueDate } = req.body;
 
-    if (!title || !description) {
-        return res.status(400).json({ success: false, message: 'Title and description are required.' });
-    }
-
-    const task = {
-        id: taskIdCounter++,
-        title,
-        description,
-        priority: priority || 'medium',
-        dueDate: dueDate || null,
-        status: 'OPEN',
-        createdById: req.user.id,
-        assignedToId: null,
-        createdAt: new Date().toISOString(),
-        completedAt: null,
-        closedAt: null
-    };
-    tasks.push(task);
-
-    res.status(201).json({ success: true, message: 'Task created successfully!', data: enrichTask(task) });
-});
-
-app.get('/api/tasks/history', authenticate, (req, res) => {
-    let historyTasks = tasks.filter(t => t.status === 'COMPLETED' || t.status === 'CLOSED');
-
-    if (req.user.role === 'manager') {
-        historyTasks = historyTasks.filter(t => t.createdById === req.user.id);
-    } else if (req.user.role === 'executor') {
-        historyTasks = historyTasks.filter(t => t.assignedToId === req.user.id);
-    }
-
-    res.json({ success: true, data: historyTasks.map(enrichTask) });
-});
-
-app.get('/api/tasks/executor/:executorId/history', authenticate, authorize('manager'), (req, res) => {
-    const executorId = parseInt(req.params.executorId);
-    const executor = getUser(executorId);
-
-    if (!executor || executor.managerId !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'You can only view history for your own executors.' });
-    }
-
-    const historyTasks = tasks.filter(t => t.assignedToId === executorId && (t.status === 'COMPLETED' || t.status === 'CLOSED'));
-    res.json({ success: true, data: historyTasks.map(enrichTask) });
-});
-
-app.get('/api/tasks/:id', authenticate, (req, res) => {
-    const task = getTask(req.params.id);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-
-    if (req.user.role === 'executor' && task.assignedToId !== req.user.id && task.createdById !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Access denied.' });
-    }
-    if (req.user.role === 'manager' && task.createdById !== req.user.id) {
-        const executorIds = users.filter(u => u.managerId === req.user.id).map(u => u.id);
-        if (!executorIds.includes(task.assignedToId)) {
-            return res.status(403).json({ success: false, message: 'Access denied.' });
+        if (!title || !description) {
+            return res.status(400).json({ success: false, message: 'Title and description are required.' });
         }
-    }
 
-    res.json({ success: true, data: enrichTask(task) });
+        const task = await Task.create({
+            title,
+            description,
+            priority: priority || 'medium',
+            dueDate: dueDate || null,
+            status: 'OPEN',
+            createdById: req.user.id
+        });
+
+        const createdTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.status(201).json({ success: true, message: 'Task created successfully!', data: createdTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.put('/api/tasks/:id', authenticate, authorize('manager'), (req, res) => {
-    const { title, description, priority, dueDate } = req.body;
-    const task = getTask(req.params.id);
+app.get('/api/tasks/history', authenticate, async (req, res) => {
+    try {
+        let whereClause = { status: { [Op.in]: ['COMPLETED', 'CLOSED'] } };
 
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-    if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only update your own tasks.' });
-    if (task.status !== 'OPEN') return res.status(400).json({ success: false, message: 'You can only update OPEN tasks.' });
+        if (req.user.role === 'manager') {
+            whereClause.createdById = req.user.id;
+        } else if (req.user.role === 'executor') {
+            whereClause.assignedToId = req.user.id;
+        }
 
-    if (title) task.title = title;
-    if (description) task.description = description;
-    if (priority) task.priority = priority;
-    if (dueDate !== undefined) task.dueDate = dueDate;
+        const tasks = await Task.findAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ],
+            order: [['closedAt', 'DESC'], ['completedAt', 'DESC']]
+        });
 
-    res.json({ success: true, message: 'Task updated successfully!', data: enrichTask(task) });
+        res.json({ success: true, data: tasks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.delete('/api/tasks/:id', authenticate, authorize('manager'), (req, res) => {
-    const taskId = parseInt(req.params.id);
-    const task = getTask(taskId);
+app.get('/api/tasks/executor/:executorId/history', authenticate, authorize('manager'), async (req, res) => {
+    try {
+        const { executorId } = req.params;
+        const executor = await User.findByPk(executorId);
 
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-    if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only delete your own tasks.' });
+        if (!executor || executor.managerId !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'You can only view history for your own executors.' });
+        }
 
-    tasks = tasks.filter(t => t.id !== taskId);
-    res.json({ success: true, message: 'Task deleted successfully.' });
+        const tasks = await Task.findAll({
+            where: {
+                assignedToId: executorId,
+                status: { [Op.in]: ['COMPLETED', 'CLOSED'] }
+            },
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ],
+            order: [['closedAt', 'DESC'], ['completedAt', 'DESC']]
+        });
+
+        res.json({ success: true, data: tasks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.patch('/api/tasks/:id/assign', authenticate, authorize('manager'), (req, res) => {
-    const { assignedToId } = req.body;
-    const task = getTask(req.params.id);
+app.get('/api/tasks/:id', authenticate, async (req, res) => {
+    try {
+        const task = await Task.findByPk(req.params.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
 
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-    if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only assign your own tasks.' });
-    if (task.status !== 'OPEN') return res.status(400).json({ success: false, message: 'Only OPEN tasks can be assigned.' });
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
 
-    const executor = getUser(assignedToId);
-    if (!executor || executor.role !== 'executor' || executor.managerId !== req.user.id) {
-        return res.status(400).json({ success: false, message: 'Invalid executor. Must be one of your team members.' });
+        res.json({ success: true, data: task });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-
-    task.assignedToId = parseInt(assignedToId);
-    task.status = 'PENDING';
-
-    res.json({ success: true, message: 'Task assigned successfully!', data: enrichTask(task) });
 });
 
-app.patch('/api/tasks/:id/complete', authenticate, (req, res) => {
-    const task = getTask(req.params.id);
+app.put('/api/tasks/:id', authenticate, authorize('manager'), async (req, res) => {
+    try {
+        const { title, description, priority, dueDate } = req.body;
+        const task = await Task.findByPk(req.params.id);
 
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only update your own tasks.' });
+        if (task.status !== 'OPEN') return res.status(400).json({ success: false, message: 'You can only update OPEN tasks.' });
 
-    // Allow both executor (assigned) and whoever created it
-    if (task.assignedToId !== req.user.id && task.createdById !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'You can only complete tasks assigned to you or created by you.' });
+        await task.update({
+            title: title || task.title,
+            description: description || task.description,
+            priority: priority || task.priority,
+            dueDate: dueDate !== undefined ? dueDate : task.dueDate
+        });
+
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.json({ success: true, message: 'Task updated successfully!', data: updatedTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-    if (task.status !== 'PENDING') return res.status(400).json({ success: false, message: 'Only PENDING tasks can be completed.' });
-
-    task.status = 'COMPLETED';
-    task.completedAt = new Date().toISOString();
-
-    res.json({ success: true, message: 'Task completed successfully!', data: enrichTask(task) });
 });
 
-app.patch('/api/tasks/:id/close', authenticate, authorize('manager'), (req, res) => {
-    const task = getTask(req.params.id);
+app.delete('/api/tasks/:id', authenticate, authorize('manager'), async (req, res) => {
+    try {
+        const task = await Task.findByPk(req.params.id);
 
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-    if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only close your own tasks.' });
-    if (task.status !== 'COMPLETED') return res.status(400).json({ success: false, message: 'Only COMPLETED tasks can be closed.' });
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only delete your own tasks.' });
 
-    task.status = 'CLOSED';
-    task.closedAt = new Date().toISOString();
-
-    res.json({ success: true, message: 'Task closed successfully!', data: enrichTask(task) });
+        await task.destroy();
+        res.json({ success: true, message: 'Task deleted successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.patch('/api/tasks/:id/status', authenticate, (req, res) => {
-    const { status } = req.body;
-    const validStatuses = ['OPEN', 'PENDING', 'COMPLETED', 'CLOSED'];
+app.patch('/api/tasks/:id/assign', authenticate, authorize('manager'), async (req, res) => {
+    try {
+        const { assignedToId } = req.body;
+        const task = await Task.findByPk(req.params.id);
 
-    if (!status || !validStatuses.includes(status)) {
-        return res.status(400).json({ success: false, message: 'Invalid status.' });
-    }
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only assign your own tasks.' });
+        if (task.status !== 'OPEN') return res.status(400).json({ success: false, message: 'Only OPEN tasks can be assigned.' });
 
-    const task = getTask(req.params.id);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        const executor = await User.findByPk(assignedToId);
+        if (!executor || executor.role !== 'executor' || executor.managerId !== req.user.id) {
+            return res.status(400).json({ success: false, message: 'Invalid executor. Must be one of your team members.' });
+        }
 
-    if (req.user.role === 'manager' && task.createdById !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'You can only modify your own tasks.' });
-    }
-    if (req.user.role === 'executor' && task.assignedToId !== req.user.id && task.createdById !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'You can only modify tasks assigned to you.' });
-    }
+        await task.update({ assignedToId, status: 'PENDING' });
 
-    if (status === 'COMPLETED' && task.status !== 'COMPLETED') {
-        task.completedAt = new Date().toISOString();
-    }
-    if (status === 'CLOSED' && task.status !== 'CLOSED') {
-        task.closedAt = new Date().toISOString();
-    }
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
 
-    task.status = status;
-    res.json({ success: true, message: `Status changed to ${status}!`, data: enrichTask(task) });
+        res.json({ success: true, message: 'Task assigned successfully!', data: updatedTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.patch('/api/tasks/:id/complete', authenticate, async (req, res) => {
+    try {
+        const task = await Task.findByPk(req.params.id);
+
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (task.assignedToId !== req.user.id && task.createdById !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'You can only complete tasks assigned to you.' });
+        }
+        if (task.status !== 'PENDING') return res.status(400).json({ success: false, message: 'Only PENDING tasks can be completed.' });
+
+        await task.update({ status: 'COMPLETED', completedAt: new Date() });
+
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.json({ success: true, message: 'Task completed successfully!', data: updatedTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.patch('/api/tasks/:id/close', authenticate, authorize('manager'), async (req, res) => {
+    try {
+        const task = await Task.findByPk(req.params.id);
+
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+        if (task.createdById !== req.user.id) return res.status(403).json({ success: false, message: 'You can only close your own tasks.' });
+        if (task.status !== 'COMPLETED') return res.status(400).json({ success: false, message: 'Only COMPLETED tasks can be closed.' });
+
+        await task.update({ status: 'CLOSED', closedAt: new Date() });
+
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.json({ success: true, message: 'Task closed successfully!', data: updatedTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
+});
+
+app.patch('/api/tasks/:id/status', authenticate, async (req, res) => {
+    try {
+        const { status } = req.body;
+        const validStatuses = ['OPEN', 'PENDING', 'COMPLETED', 'CLOSED'];
+
+        if (!status || !validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status.' });
+        }
+
+        const task = await Task.findByPk(req.params.id);
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+
+        if (req.user.role === 'manager' && task.createdById !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'You can only modify your own tasks.' });
+        }
+        if (req.user.role === 'executor' && task.assignedToId !== req.user.id && task.createdById !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'You can only modify tasks assigned to you.' });
+        }
+
+        const updateData = { status };
+        if (status === 'COMPLETED' && task.status !== 'COMPLETED') {
+            updateData.completedAt = new Date();
+        }
+        if (status === 'CLOSED' && task.status !== 'CLOSED') {
+            updateData.closedAt = new Date();
+        }
+
+        await task.update(updateData);
+
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.json({ success: true, message: `Status changed to ${status}!`, data: updatedTask });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
 // ===== STATS ROUTES =====
-app.get('/api/stats', authenticate, (req, res) => {
-    let userTasks = tasks;
+app.get('/api/stats', authenticate, async (req, res) => {
+    try {
+        let whereClause = {};
 
-    if (req.user.role === 'manager') {
-        const executorIds = users.filter(u => u.managerId === req.user.id).map(u => u.id);
-        userTasks = tasks.filter(t => t.createdById === req.user.id || executorIds.includes(t.assignedToId));
-    } else if (req.user.role === 'executor') {
-        userTasks = tasks.filter(t => t.assignedToId === req.user.id || t.createdById === req.user.id);
+        if (req.user.role === 'manager') {
+            const executors = await User.findAll({ where: { managerId: req.user.id } });
+            const executorIds = executors.map(e => e.id);
+            whereClause[Op.or] = [
+                { createdById: req.user.id },
+                { assignedToId: { [Op.in]: executorIds } }
+            ];
+        } else if (req.user.role === 'executor') {
+            whereClause[Op.or] = [{ assignedToId: req.user.id }, { createdById: req.user.id }];
+        }
+
+        const total = await Task.count({ where: whereClause });
+        const open = await Task.count({ where: { ...whereClause, status: 'OPEN' } });
+        const pending = await Task.count({ where: { ...whereClause, status: 'PENDING' } });
+        const completed = await Task.count({ where: { ...whereClause, status: 'COMPLETED' } });
+        const closed = await Task.count({ where: { ...whereClause, status: 'CLOSED' } });
+
+        res.json({ success: true, data: { total, open, pending, completed, closed } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-
-    const stats = {
-        total: userTasks.length,
-        open: userTasks.filter(t => t.status === 'OPEN').length,
-        pending: userTasks.filter(t => t.status === 'PENDING').length,
-        completed: userTasks.filter(t => t.status === 'COMPLETED').length,
-        closed: userTasks.filter(t => t.status === 'CLOSED').length
-    };
-
-    res.json({ success: true, data: stats });
 });
 
 // ===== COMMENTS ROUTES =====
-app.get('/api/comments/task/:taskId', authenticate, (req, res) => {
-    const taskId = parseInt(req.params.taskId);
-    const task = getTask(taskId);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+app.get('/api/comments/task/:taskId', authenticate, async (req, res) => {
+    try {
+        const taskId = parseInt(req.params.taskId);
+        const task = await Task.findByPk(taskId);
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
 
-    const taskComments = comments.filter(c => c.taskId === taskId).map(c => {
-        const author = getUser(c.authorId);
-        return {
-            ...c,
-            author: author ? { id: author.id, username: author.username, email: author.email } : null
-        };
-    });
+        const comments = await Comment.findAll({
+            where: { taskId },
+            include: [{ model: User, as: 'author', attributes: ['id', 'username', 'email'] }],
+            order: [['createdAt', 'ASC']]
+        });
 
-    res.json({ success: true, data: taskComments });
+        res.json({ success: true, data: comments });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.post('/api/comments', authenticate, (req, res) => {
-    const { taskId, content } = req.body;
+app.post('/api/comments', authenticate, async (req, res) => {
+    try {
+        const { taskId, content } = req.body;
 
-    if (!taskId || !content) {
-        return res.status(400).json({ success: false, message: 'Task ID and content are required.' });
-    }
-
-    const task = getTask(taskId);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-
-    const comment = {
-        id: commentIdCounter++,
-        taskId: parseInt(taskId),
-        authorId: req.user.id,
-        content,
-        createdAt: new Date().toISOString()
-    };
-    comments.push(comment);
-
-    const author = getUser(comment.authorId);
-    res.status(201).json({
-        success: true,
-        message: 'Comment added successfully!',
-        data: {
-            ...comment,
-            author: author ? { id: author.id, username: author.username, email: author.email } : null
+        if (!taskId || !content) {
+            return res.status(400).json({ success: false, message: 'Task ID and content are required.' });
         }
-    });
+
+        const task = await Task.findByPk(taskId);
+        if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
+
+        const comment = await Comment.create({
+            taskId: parseInt(taskId),
+            userId: req.user.id,
+            content
+        });
+
+        const createdComment = await Comment.findByPk(comment.id, {
+            include: [{ model: User, as: 'author', attributes: ['id', 'username', 'email'] }]
+        });
+
+        res.status(201).json({ success: true, message: 'Comment added successfully!', data: createdComment });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
+    }
 });
 
-app.delete('/api/comments/:id', authenticate, (req, res) => {
-    const commentId = parseInt(req.params.id);
-    const comment = comments.find(c => c.id === commentId);
+app.delete('/api/comments/:id', authenticate, async (req, res) => {
+    try {
+        const comment = await Comment.findByPk(req.params.id);
 
-    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found.' });
-    if (comment.authorId !== req.user.id && req.user.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'You can only delete your own comments.' });
+        if (!comment) return res.status(404).json({ success: false, message: 'Comment not found.' });
+        if (comment.userId !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'You can only delete your own comments.' });
+        }
+
+        await comment.destroy();
+        res.json({ success: true, message: 'Comment deleted successfully.' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-
-    comments = comments.filter(c => c.id !== commentId);
-    res.json({ success: true, message: 'Comment deleted successfully.' });
 });
 
 // ===== SEARCH ROUTES =====
-app.get('/api/search/tasks', authenticate, (req, res) => {
-    const { q } = req.query;
-    if (!q) return res.json({ success: true, data: [] });
+app.get('/api/search/tasks', authenticate, async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q) return res.json({ success: true, data: [] });
 
-    const query = q.toLowerCase();
-    let searchResults = tasks.filter(t =>
-        t.title.toLowerCase().includes(query) ||
-        t.description.toLowerCase().includes(query)
-    );
+        let whereClause = {
+            [Op.or]: [
+                { title: { [Op.like]: `%${q}%` } },
+                { description: { [Op.like]: `%${q}%` } }
+            ]
+        };
 
-    if (req.user.role === 'manager') {
-        const executorIds = users.filter(u => u.managerId === req.user.id).map(u => u.id);
-        searchResults = searchResults.filter(t => t.createdById === req.user.id || executorIds.includes(t.assignedToId));
-    } else if (req.user.role === 'executor') {
-        searchResults = searchResults.filter(t => t.assignedToId === req.user.id || t.createdById === req.user.id);
+        if (req.user.role === 'manager') {
+            const executors = await User.findAll({ where: { managerId: req.user.id } });
+            const executorIds = executors.map(e => e.id);
+            whereClause[Op.and] = {
+                [Op.or]: [
+                    { createdById: req.user.id },
+                    { assignedToId: { [Op.in]: executorIds } }
+                ]
+            };
+        } else if (req.user.role === 'executor') {
+            whereClause[Op.and] = {
+                [Op.or]: [{ assignedToId: req.user.id }, { createdById: req.user.id }]
+            };
+        }
+
+        const tasks = await Task.findAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+                { model: User, as: 'assignee', attributes: ['id', 'username', 'email'] }
+            ]
+        });
+
+        res.json({ success: true, data: tasks });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Server error.' });
     }
-
-    res.json({ success: true, data: searchResults.map(enrichTask) });
 });
 
 // ===== CATCH ALL =====
