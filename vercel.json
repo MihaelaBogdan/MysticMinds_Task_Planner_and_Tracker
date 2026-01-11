@@ -15,7 +15,7 @@
         },
         {
             "source": "/(.*)",
-            "destination": "/frontend/dist/index.html"
+            "destination": "/index.html"
         }
     ],
     "installCommand": "npm install && cd backend && npm install && cd ../frontend && npm install"
