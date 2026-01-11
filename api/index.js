@@ -51,7 +51,7 @@ app.post('/api/auth/login', async (req, res) => {
         if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
         const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+        res.json({ success: true, data: { token, user: { id: user.id, username: user.username, email: user.email, role: user.role } } });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Server error' });
     }
@@ -60,7 +60,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Get current user
 app.get('/api/auth/me', auth, (req, res) => {
     const { password, ...user } = req.user;
-    res.json({ success: true, user });
+    res.json({ success: true, data: user });
 });
 
 // Get tasks
