@@ -123,12 +123,10 @@ function ExecutorDashboard() {
     };
 
     const canDrag = (task) => {
-        return task.assignedToId === currentUser.id || task.createdById === currentUser.id;
+        return task.assignedToId == currentUser.id || task.createdById == currentUser.id;
     };
 
-    const myAssignedTasks = tasks.filter(t => t.assignedToId === currentUser.id);
-    const myCreatedTasks = tasks.filter(t => t.createdById === currentUser.id);
-    const allMyTasks = [...new Map([...myAssignedTasks, ...myCreatedTasks].map(t => [t.id, t])).values()];
+    const allMyTasks = tasks;
 
     const columns = {
         OPEN: allMyTasks.filter(t => t.status === 'OPEN'),
@@ -258,10 +256,10 @@ function ExecutorDashboard() {
                                             <p className="kanban-card-desc">{task.description.substring(0, 60)}...</p>
 
                                             <div className="kanban-card-meta">
-                                                {task.createdById === currentUser.id && (
+                                                {task.createdById == currentUser.id && (
                                                     <span className="kanban-tag created">Created by me</span>
                                                 )}
-                                                {task.assignedToId === currentUser.id && (
+                                                {task.assignedToId == currentUser.id && (
                                                     <span className="kanban-tag assigned">Assigned to me</span>
                                                 )}
                                                 {task.assignee && task.assignedToId !== currentUser.id && (
@@ -273,7 +271,7 @@ function ExecutorDashboard() {
                                                 <div className="kanban-card-due">Due: {formatDate(task.dueDate)}</div>
                                             )}
 
-                                            {task.status === 'PENDING' && task.assignedToId === currentUser.id && (
+                                            {task.status === 'PENDING' && task.assignedToId == currentUser.id && (
                                                 <div className="kanban-card-actions">
                                                     <button className="btn btn-sm btn-success" onClick={() => handleComplete(task.id)}>
                                                         Complete

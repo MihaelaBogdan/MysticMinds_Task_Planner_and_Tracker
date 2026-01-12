@@ -17,14 +17,14 @@ const seedDatabase = async () => {
         console.log('👑 Admin creat:', admin.email);
 
         const manager1 = await User.create({
-            username: 'Maria Manager',
+            username: 'Maria',
             email: 'maria@taskflow.com',
             password: 'manager123',
             role: 'manager'
         });
 
         const manager2 = await User.create({
-            username: 'Diana Director',
+            username: 'Diana',
             email: 'diana@taskflow.com',
             password: 'manager123',
             role: 'manager'
@@ -32,7 +32,7 @@ const seedDatabase = async () => {
         console.log('💼 Manageri creați:', manager1.email, manager2.email);
 
         const executor1 = await User.create({
-            username: 'Ana Executor',
+            username: 'Ana',
             email: 'ana@taskflow.com',
             password: 'executor123',
             role: 'executor',
@@ -40,7 +40,7 @@ const seedDatabase = async () => {
         });
 
         const executor2 = await User.create({
-            username: 'Elena Worker',
+            username: 'Elena',
             email: 'elena@taskflow.com',
             password: 'executor123',
             role: 'executor',
@@ -48,7 +48,7 @@ const seedDatabase = async () => {
         });
 
         const executor3 = await User.create({
-            username: 'Sofia Helper',
+            username: 'Sofia',
             email: 'sofia@taskflow.com',
             password: 'executor123',
             role: 'executor',
