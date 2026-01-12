@@ -1,6 +1,5 @@
 import { API_URL as BASE_URL } from '../config.js';
 
-// Append /api to the base URL from config
 const API_URL = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
 
 const getToken = () => localStorage.getItem('token');

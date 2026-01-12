@@ -102,7 +102,6 @@ router.route('/:id')
                 });
             }
 
-            // Delete tasks created by or assigned to this user to avoid FK constraints
             await Task.destroy({ where: { [Op.or]: [{ createdById: user.id }, { assignedToId: user.id }] } });
 
             await user.destroy();
