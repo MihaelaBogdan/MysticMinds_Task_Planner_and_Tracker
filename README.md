@@ -3,6 +3,9 @@
 Membrii echipei: Bogdan Mihaela, Bostan Francesca-Maria, Bunduc Maria-Magdalena
 Grupa 1085; Seria C
 
+Aplicatia Web poate fi accesata la adresa: https://task-flow2.onrender.com
+
+
 Scopul proiectului este realizarea unei aplicații web care să permită planificarea, alocarea și monitorizarea activităților (task-urilor) desfășurate într-o echipă.
 Aplicația oferă un spațiu centralizat pentru colaborare, urmărirea progresului și vizualizarea istoricului sarcinilor, optimizând comunicarea între administratori, manageri și executanți.
 Aplicația este concepută sub forma unei Single Page Application (SPA), disponibilă în browser.
