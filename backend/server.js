@@ -198,12 +198,22 @@ app.get('/api/docs', (req, res) => {
     });
 });
 
-app.use((req, res) => {
+// Serve static files from frontend build
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// API 404 handler (must be before catch-all)
+app.use('/api/*', (req, res) => {
     res.status(404).json({
         success: false,
         message: 'Endpoint not found.',
         hint: 'Visit /api/docs for available endpoints'
     });
+});
+
+// Catch-all route for SPA - serves index.html for non-API routes
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 app.use((err, req, res, next) => {
