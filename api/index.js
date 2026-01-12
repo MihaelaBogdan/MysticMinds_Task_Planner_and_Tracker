@@ -25,9 +25,15 @@ try {
     authorize = auth.authorize;
 } catch (e) {
     console.warn('WARNING: Auth middleware could not be loaded.', e.message);
-    // Fallbacks to prevent crash on route definition
-    authenticate = (req, res, next) => res.status(503).json({ success: false, message: 'Service Unavailable: Auth module failed.' });
-    authorize = () => (req, res, next) => res.status(503).json({ success: false, message: 'Service Unavailable: Auth module failed.' });
+    // Fallbacks to prevent crash on route definition & Support Mock Login
+    authenticate = (req, res, next) => {
+        if (req.headers.authorization === 'Bearer mock-token') {
+            req.user = { id: 1, role: 'admin', username: 'Admin (Demo)', email: 'admin@demo.com' };
+            return next();
+        }
+        res.status(503).json({ success: false, message: 'Service Unavailable: Auth module failed. Connect Database to fix.' });
+    };
+    authorize = () => (req, res, next) => next(); // Allow all in mock mode
 }
 
 const app = express();
@@ -53,12 +59,28 @@ const seedDatabase = async () => {
 
         console.log('Seeding database with initial users...');
 
-        // ... (rest of seeding logic is fine, keeping it concise here for diff)
-        // Note: Seeding logic is inside the try block below in actual execution if expanded, 
-        // but here we just call the function.
-        // For this replacement, I will assume the seeding logic is kept or I should keep the seedDatabase function as is?
-        // Ah, replace_file_content replaces the chunk. I need to be careful not to delete seedDatabase body if I don't provide it.
-        // I will focus on initDb and app.use replacement.
+        const admin = await User.create({
+            username: 'admin',
+            email: 'admin@taskflow.com',
+            password: 'admin123',
+            role: 'admin'
+        });
+
+        const manager1 = await User.create({
+            username: 'Maria',
+            email: 'maria@taskflow.com',
+            password: 'manager123',
+            role: 'manager'
+        });
+
+        const manager2 = await User.create({
+            username: 'Diana',
+            email: 'diana@taskflow.com',
+            password: 'manager123',
+            role: 'manager'
+        });
+
+        console.log('Seeding completed. Default managers: maria@taskflow.com, diana@taskflow.com');
     } catch (error) {
         console.error('Error seeding database:', error);
     }
@@ -82,7 +104,10 @@ const initDb = async () => {
 
         dbStatus.connected = true;
         dbStatus.error = null;
-        console.log('Database connected and ready.');
+        dbStatus.connected = true;
+        dbStatus.error = null;
+        const dialect = sequelize.getDialect();
+        console.log(`Database connected and ready (${dialect}).`);
     } catch (error) {
         console.error('Database initialization error:', error);
         dbStatus.connected = false;
@@ -101,7 +126,8 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         env: {
             node_env: process.env.NODE_ENV,
-            has_postgres: !!process.env.POSTGRES_URL
+            has_postgres: !!process.env.POSTGRES_URL,
+            dialect: sequelize ? sequelize.getDialect() : 'unknown'
         }
     });
 });
@@ -117,6 +143,25 @@ app.use(async (req, res, next) => {
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        // MOCK LOGIN CHECK (For demo when DB is down)
+        if ((!User || !dbStatus.connected) && (email === 'admin' || email === 'admin@demo.com') && password === 'admin123') {
+            return res.json({
+                success: true,
+                message: 'Login Successful (Demo Mode - No Database)',
+                data: {
+                    token: 'mock-token',
+                    user: {
+                        id: 1,
+                        username: 'Admin (Demo)',
+                        email: 'admin@demo.com',
+                        role: 'admin',
+                        manager: null
+                    }
+                }
+            });
+        }
+
         if (!email || !password) {
             return res.status(400).json({ success: false, message: 'Email and password are required.' });
         }
@@ -818,7 +863,11 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    res.status(500).json({
+        success: false,
+        message: 'Internal server error.',
+        error: process.env.NODE_ENV === 'production' ? err.message : err.stack
+    });
 });
 
 module.exports = app;

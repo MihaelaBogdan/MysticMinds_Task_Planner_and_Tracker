@@ -4,7 +4,7 @@
     "description": "TaskFlow - Task Planning and Tracking Application",
     "scripts": {
         "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
-        "build": "cd frontend && npm run build",
+        "build": "cd frontend && npm install --include=dev && npm run build",
         "start": "cd backend && npm start"
     },
     "dependencies": {
