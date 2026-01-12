@@ -4,8 +4,31 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
-const { sequelize, User, Task, Comment } = require('./models');
-const { authenticate, authorize } = require('./middleware/auth');
+
+// SAFE IMPORTS to prevent startup crash
+let sequelize, User, Task, Comment;
+let authenticate, authorize;
+
+try {
+    const models = require('./models');
+    sequelize = models.sequelize;
+    User = models.User;
+    Task = models.Task;
+    Comment = models.Comment;
+} catch (e) {
+    console.warn('WARNING: DB Models could not be loaded. Server running in limited mode.', e.message);
+}
+
+try {
+    const auth = require('./middleware/auth');
+    authenticate = auth.authenticate;
+    authorize = auth.authorize;
+} catch (e) {
+    console.warn('WARNING: Auth middleware could not be loaded.', e.message);
+    // Fallbacks to prevent crash on route definition
+    authenticate = (req, res, next) => res.status(503).json({ success: false, message: 'Service Unavailable: Auth module failed.' });
+    authorize = () => (req, res, next) => res.status(503).json({ success: false, message: 'Service Unavailable: Auth module failed.' });
+}
 
 const app = express();
 const JWT_SECRET = process.env.JWT_SECRET || 'key';
