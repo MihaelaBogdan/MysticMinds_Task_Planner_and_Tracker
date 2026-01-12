@@ -14,7 +14,14 @@ const getHeaders = () => {
 };
 
 const handleResponse = async (response) => {
-    const data = await response.json();
+    let data;
+    try {
+        const text = await response.text();
+        data = JSON.parse(text);
+    } catch (e) {
+        // Response is not valid JSON (server error page, etc.)
+        throw new Error('Server error. Please try again later.');
+    }
     if (!response.ok) {
         throw new Error(data.message || 'Something went wrong');
     }

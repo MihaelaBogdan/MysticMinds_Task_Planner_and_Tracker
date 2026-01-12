@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
 const { sequelize, User, Task, Comment } = require('./models');
 const { authenticate, authorize } = require('./middleware/auth');
 
@@ -15,43 +16,159 @@ app.use(express.json());
 
 // ===== DATABASE INITIALIZATION FOR VERCEL =====
 let dbInitialized = false;
+let dbInitializing = false;
+
+const seedDatabase = async () => {
+    try {
+        // Check if admin already exists
+        const adminExists = await User.findOne({ where: { email: 'admin@taskflow.com' } });
+        if (adminExists) {
+            console.log('Database already seeded.');
+            return;
+        }
+
+        console.log('Seeding database with initial data...');
+
+        // Create Admin
+        const admin = await User.create({
+            username: 'Admin',
+            email: 'admin@taskflow.com',
+            password: 'admin123',
+            role: 'admin'
+        });
+        console.log('Admin created:', admin.email);
+
+        // Create Managers
+        const manager1 = await User.create({
+            username: 'Maria',
+            email: 'maria@taskflow.com',
+            password: 'manager123',
+            role: 'manager'
+        });
+
+        const manager2 = await User.create({
+            username: 'Ion',
+            email: 'ion@taskflow.com',
+            password: 'manager123',
+            role: 'manager'
+        });
+        console.log('Managers created:', manager1.email, manager2.email);
+
+        // Create Executors
+        const executor1 = await User.create({
+            username: 'Ana',
+            email: 'ana@taskflow.com',
+            password: 'executor123',
+            role: 'executor',
+            managerId: manager1.id
+        });
+
+        const executor2 = await User.create({
+            username: 'Andrei',
+            email: 'andrei@taskflow.com',
+            password: 'executor123',
+            role: 'executor',
+            managerId: manager1.id
+        });
+
+        const executor3 = await User.create({
+            username: 'Elena',
+            email: 'elena@taskflow.com',
+            password: 'executor123',
+            role: 'executor',
+            managerId: manager2.id
+        });
+        console.log('Executors created:', executor1.email, executor2.email, executor3.email);
+
+        // Create sample tasks
+        await Task.create({
+            title: 'Design new landing page',
+            description: 'Create a modern landing page design for the company website',
+            priority: 'high',
+            status: 'PENDING',
+            createdById: manager1.id,
+            assignedToId: executor1.id
+        });
+
+        await Task.create({
+            title: 'Fix login bug',
+            description: 'Users report issues with login on mobile devices',
+            priority: 'high',
+            status: 'OPEN',
+            createdById: manager1.id
+        });
+
+        await Task.create({
+            title: 'Update documentation',
+            description: 'Update the API documentation with new endpoints',
+            priority: 'medium',
+            status: 'PENDING',
+            createdById: manager2.id,
+            assignedToId: executor3.id
+        });
+
+        console.log('Database seeded successfully!');
+    } catch (error) {
+        console.error('Error seeding database:', error);
+    }
+};
 
 const initDb = async () => {
-    if (dbInitialized) return;
+    if (dbInitialized) return true;
+    if (dbInitializing) {
+        // Wait for initialization to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return dbInitialized;
+    }
+
+    dbInitializing = true;
 
     try {
         // If on Vercel, we need to copy the DB to /tmp to make it writable
-        // This is a "hack" for serverless SQLite to work without external DB
         if (process.env.VERCEL) {
             const tmpDbPath = path.join('/tmp', 'database.sqlite');
             const sourceDbPath = path.join(__dirname, 'database.sqlite');
 
-            // Only copy if it doesn't exist in tmp (preserves data during hot execution)
+            // Only copy if it doesn't exist in tmp
             if (!fs.existsSync(tmpDbPath)) {
                 if (fs.existsSync(sourceDbPath)) {
                     console.log('Copying database to writable /tmp directory...');
                     fs.copyFileSync(sourceDbPath, tmpDbPath);
                 } else {
-                    console.log('No source database found, creating new one in /tmp...');
+                    console.log('No source database found, will create and seed new one...');
                 }
             }
         }
 
         await sequelize.authenticate();
-        // Sync models to ensure tables exist
         await sequelize.sync();
 
-        console.log('Database connected successfully.');
+        // Seed database if empty
+        await seedDatabase();
+
+        console.log('Database connected and ready.');
         dbInitialized = true;
+        dbInitializing = false;
+        return true;
     } catch (error) {
         console.error('Database connection error:', error);
+        dbInitializing = false;
+        return false;
     }
 };
 
 // Middleware to ensure DB is connected before every request
 app.use(async (req, res, next) => {
-    await initDb();
-    next();
+    try {
+        const success = await initDb();
+        if (!success) {
+            return res.status(500).json({ success: false, message: 'Database connection failed. Please try again.' });
+        }
+        next();
+    } catch (error) {
+        console.error('Middleware error:', error);
+        return res.status(500).json({ success: false, message: 'Server initialization error.' });
+    }
 });
 
 // ===== HEALTH CHECK =====
