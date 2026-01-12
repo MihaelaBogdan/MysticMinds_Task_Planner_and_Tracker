@@ -68,26 +68,27 @@ const initDb = async () => {
     }
 };
 
-// Middleware to attempt DB init on request (non-blocking for health check)
+// Health check endpoint - DEFINED BEFORE DB INIT to ensure it always works
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        message: 'TaskFlow API is functional',
+        db_connected: dbStatus.connected,
+        db_error: dbStatus.error,
+        timestamp: new Date().toISOString(),
+        env: {
+            node_env: process.env.NODE_ENV,
+            has_postgres: !!process.env.POSTGRES_URL
+        }
+    });
+});
+
+// Middleware to attempt DB init on request - ONLY for non-health routes
 app.use(async (req, res, next) => {
     if (!dbStatus.connected) {
         await initDb();
     }
     next();
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({
-        success: dbStatus.connected,
-        message: dbStatus.connected ? 'TaskFlow API is working!' : 'Database connection failed',
-        error: dbStatus.error,
-        timestamp: new Date().toISOString(),
-        env: {
-            node_env: process.env.NODE_ENV,
-            has_postgres: !!process.env.POSTGRES_URL,
-            has_db_url: !!process.env.DATABASE_URL
-        }
-    });
 });
 
 app.post('/api/auth/login', async (req, res) => {
