@@ -19,7 +19,7 @@
         "sqlite3": "^5.1.7"
     },
     "engines": {
-        "node": "24.x"
+        "node": "20.x"
     },
     "devDependencies": {
         "concurrently": "^9.2.1"
