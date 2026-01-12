@@ -8,8 +8,8 @@ if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
     // Railway has persistent volume
     storagePath = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'database.sqlite');
 } else if (process.env.RENDER) {
-    // Render has persistent disk mounted at /data
-    storagePath = '/data/database.sqlite';
+    // Render (Ephemeral SQLite - No paid disk)
+    storagePath = path.join(__dirname, '..', 'database.sqlite');
 } else if (process.env.DB_STORAGE) {
     storagePath = path.join(__dirname, '..', process.env.DB_STORAGE);
 } else {

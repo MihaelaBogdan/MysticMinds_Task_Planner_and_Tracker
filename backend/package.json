@@ -7,7 +7,7 @@
         "start": "node server.js",
         "dev": "node server.js",
         "seed": "node seeders/seed.js",
-        "postinstall": "npm rebuild sqlite3"
+        "postinstall": "npm install sqlite3 --build-from-source"
     },
     "dependencies": {
         "bcryptjs": "^2.4.3",
