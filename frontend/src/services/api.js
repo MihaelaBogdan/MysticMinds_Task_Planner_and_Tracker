@@ -1,4 +1,22 @@
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:5000/api');
+// Handle different VITE_API_URL formats:
+// - Full URL: https://example.com/api
+// - Just hostname: example.onrender.com (from Render's host property)
+// - Not set: use local or relative path
+const buildApiUrl = () => {
+    const envUrl = import.meta.env.VITE_API_URL;
+    if (envUrl) {
+        // If it's already a full URL, use it
+        if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
+            return envUrl.endsWith('/api') ? envUrl : `${envUrl}/api`;
+        }
+        // Render provides just the hostname, add https:// and /api
+        return `https://${envUrl}/api`;
+    }
+    // Fallback for local development or relative paths
+    return import.meta.env.PROD ? '/api' : 'http://localhost:5000/api';
+};
+
+const API_URL = buildApiUrl();
 
 const getToken = () => localStorage.getItem('token');
 

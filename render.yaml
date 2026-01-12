@@ -30,7 +30,7 @@ services:
         fromService:
           type: web
           name: taskflow-backend
-          property: hostWithScheme
+          property: host
     routes:
       - type: rewrite
         source: /*
