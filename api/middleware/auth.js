@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'mystic_minds_secret_key_2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'key';
 
 const authenticate = async (req, res, next) => {
     try {

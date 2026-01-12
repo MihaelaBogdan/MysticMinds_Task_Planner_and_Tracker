@@ -40,7 +40,7 @@ app.use('/api/search', searchRoutes);
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
-        message: '🎀 TaskFlow API is working!',
+        message: 'TaskFlow API is working!',
         timestamp: new Date().toISOString(),
         endpoints: {
             auth: '/api/auth',
@@ -217,20 +217,17 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
     try {
         await sequelize.sync();
-        console.log('✨ Database connected and synchronized!');
+        console.log('Database connected and synchronized!');
 
         app.listen(PORT, () => {
-
-            console.log(`   TaskFlow `);
-
-            console.log(`    Server started on port ${PORT}`);
-            console.log(`    http://localhost:${PORT}`);
-            console.log(`    Health: http://localhost:${PORT}/api/health`);
-            console.log(`    Docs: http://localhost:${PORT}/api/docs`);
-
+            console.log('TaskFlow');
+            console.log(`Server started on port ${PORT}`);
+            console.log(`http://localhost:${PORT}`);
+            console.log(`Health: http://localhost:${PORT}/api/health`);
+            console.log(`Docs: http://localhost:${PORT}/api/docs`);
         });
     } catch (error) {
-        console.error('❌ Error starting server:', error);
+        console.error('Error starting server:', error);
         process.exit(1);
     }
 };

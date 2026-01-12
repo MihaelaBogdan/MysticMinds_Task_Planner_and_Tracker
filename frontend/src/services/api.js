@@ -17,11 +17,12 @@ const handleResponse = async (response) => {
     let data;
     try {
         const text = await response.text();
-        data = JSON.parse(text);
-    } catch (e) {
-        // Response is not valid JSON (server error page, etc.)
-        throw new Error('Server error. Please try again later.');
+        data = text ? JSON.parse(text) : {};
+    } catch (error) {
+        console.error('Failed to parse response:', error);
+        throw new Error('Server returned invalid response. Please try again later.');
     }
+
     if (!response.ok) {
         throw new Error(data.message || 'Something went wrong');
     }

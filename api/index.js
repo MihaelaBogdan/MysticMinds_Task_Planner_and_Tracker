@@ -4,41 +4,34 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
-const bcrypt = require('bcryptjs');
 const { sequelize, User, Task, Comment } = require('./models');
 const { authenticate, authorize } = require('./middleware/auth');
 
 const app = express();
-const JWT_SECRET = process.env.JWT_SECRET || 'mystic_minds_secret_key_2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'key';
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-// ===== DATABASE INITIALIZATION FOR VERCEL =====
 let dbInitialized = false;
-let dbInitializing = false;
 
 const seedDatabase = async () => {
     try {
-        // Check if admin already exists
-        const adminExists = await User.findOne({ where: { email: 'admin@taskflow.com' } });
-        if (adminExists) {
-            console.log('Database already seeded.');
+        const userCount = await User.count();
+        if (userCount > 0) {
+            console.log(`Database already has ${userCount} users, skipping seed.`);
             return;
         }
 
-        console.log('Seeding database with initial data...');
+        console.log('Seeding database with initial users...');
 
-        // Create Admin
         const admin = await User.create({
-            username: 'Admin',
+            username: 'admin',
             email: 'admin@taskflow.com',
             password: 'admin123',
             role: 'admin'
         });
-        console.log('Admin created:', admin.email);
 
-        // Create Managers
         const manager1 = await User.create({
             username: 'Maria',
             email: 'maria@taskflow.com',
@@ -47,14 +40,12 @@ const seedDatabase = async () => {
         });
 
         const manager2 = await User.create({
-            username: 'Ion',
-            email: 'ion@taskflow.com',
+            username: 'Diana',
+            email: 'diana@taskflow.com',
             password: 'manager123',
             role: 'manager'
         });
-        console.log('Managers created:', manager1.email, manager2.email);
 
-        // Create Executors
         const executor1 = await User.create({
             username: 'Ana',
             email: 'ana@taskflow.com',
@@ -64,78 +55,59 @@ const seedDatabase = async () => {
         });
 
         const executor2 = await User.create({
-            username: 'Andrei',
-            email: 'andrei@taskflow.com',
+            username: 'Elena',
+            email: 'elena@taskflow.com',
             password: 'executor123',
             role: 'executor',
             managerId: manager1.id
         });
 
         const executor3 = await User.create({
-            username: 'Elena',
-            email: 'elena@taskflow.com',
+            username: 'Sofia',
+            email: 'sofia@taskflow.com',
             password: 'executor123',
             role: 'executor',
             managerId: manager2.id
         });
-        console.log('Executors created:', executor1.email, executor2.email, executor3.email);
 
-        // Create sample tasks
         await Task.create({
             title: 'Design new landing page',
-            description: 'Create a modern landing page design for the company website',
+            description: 'Create a beautiful, modern landing page for our product launch.',
             priority: 'high',
+            status: 'OPEN',
+            createdById: manager1.id,
+            dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        });
+
+        await Task.create({
+            title: 'Update user documentation',
+            description: 'Review and update all user guides with the latest features.',
+            priority: 'medium',
             status: 'PENDING',
             createdById: manager1.id,
             assignedToId: executor1.id
         });
 
-        await Task.create({
-            title: 'Fix login bug',
-            description: 'Users report issues with login on mobile devices',
-            priority: 'high',
-            status: 'OPEN',
-            createdById: manager1.id
-        });
-
-        await Task.create({
-            title: 'Update documentation',
-            description: 'Update the API documentation with new endpoints',
-            priority: 'medium',
-            status: 'PENDING',
-            createdById: manager2.id,
-            assignedToId: executor3.id
-        });
-
-        console.log('Database seeded successfully!');
+        console.log('Database seeded successfully with 6 users and 2 tasks!');
     } catch (error) {
         console.error('Error seeding database:', error);
     }
 };
 
 const initDb = async () => {
-    if (dbInitialized) return true;
-    if (dbInitializing) {
-        // Wait for initialization to complete
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return dbInitialized;
-    }
-
-    dbInitializing = true;
+    if (dbInitialized) return;
 
     try {
-        // If on Vercel, we need to copy the DB to /tmp to make it writable
         if (process.env.VERCEL) {
             const tmpDbPath = path.join('/tmp', 'database.sqlite');
             const sourceDbPath = path.join(__dirname, 'database.sqlite');
 
-            // Only copy if it doesn't exist in tmp
             if (!fs.existsSync(tmpDbPath)) {
                 if (fs.existsSync(sourceDbPath)) {
                     console.log('Copying database to writable /tmp directory...');
                     fs.copyFileSync(sourceDbPath, tmpDbPath);
                 } else {
-                    console.log('No source database found, will create and seed new one...');
+                    console.log('No source database found, creating new one in /tmp...');
                 }
             }
         }
@@ -143,40 +115,24 @@ const initDb = async () => {
         await sequelize.authenticate();
         await sequelize.sync();
 
-        // Seed database if empty
         await seedDatabase();
 
         console.log('Database connected and ready.');
         dbInitialized = true;
-        dbInitializing = false;
-        return true;
     } catch (error) {
-        console.error('Database connection error:', error);
-        dbInitializing = false;
-        return false;
+        console.error('Database initialization error:', error);
     }
 };
 
-// Middleware to ensure DB is connected before every request
 app.use(async (req, res, next) => {
-    try {
-        const success = await initDb();
-        if (!success) {
-            return res.status(500).json({ success: false, message: 'Database connection failed. Please try again.' });
-        }
-        next();
-    } catch (error) {
-        console.error('Middleware error:', error);
-        return res.status(500).json({ success: false, message: 'Server initialization error.' });
-    }
+    await initDb();
+    next();
 });
 
-// ===== HEALTH CHECK =====
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: 'TaskFlow API is working!', timestamp: new Date().toISOString() });
 });
 
-// ===== AUTH ROUTES =====
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -316,7 +272,6 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
     }
 });
 
-// ===== USER ROUTES =====
 app.get('/api/users', authenticate, authorize('admin'), async (req, res) => {
     try {
         const users = await User.findAll({
@@ -446,7 +401,6 @@ app.get('/api/users/:id/tasks', authenticate, authorize('admin'), async (req, re
     }
 });
 
-// ===== TASK ROUTES =====
 app.get('/api/tasks', authenticate, async (req, res) => {
     try {
         const { status, priority, view } = req.query;
@@ -748,7 +702,6 @@ app.patch('/api/tasks/:id/status', authenticate, async (req, res) => {
     }
 });
 
-// ===== STATS ROUTES =====
 app.get('/api/stats', authenticate, async (req, res) => {
     try {
         let whereClause = {};
@@ -776,7 +729,6 @@ app.get('/api/stats', authenticate, async (req, res) => {
     }
 });
 
-// ===== COMMENTS ROUTES =====
 app.get('/api/comments/task/:taskId', authenticate, async (req, res) => {
     try {
         const taskId = parseInt(req.params.taskId);
@@ -838,7 +790,6 @@ app.delete('/api/comments/:id', authenticate, async (req, res) => {
     }
 });
 
-// ===== SEARCH ROUTES =====
 app.get('/api/search/tasks', authenticate, async (req, res) => {
     try {
         const { q } = req.query;
@@ -880,12 +831,10 @@ app.get('/api/search/tasks', authenticate, async (req, res) => {
     }
 });
 
-// ===== CATCH ALL =====
 app.use((req, res) => {
     res.status(404).json({ success: false, message: 'Endpoint not found.' });
 });
 
-// ===== ERROR HANDLER =====
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(500).json({ success: false, message: 'Server error.' });

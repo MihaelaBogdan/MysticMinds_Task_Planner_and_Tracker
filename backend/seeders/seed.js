@@ -3,10 +3,10 @@ const { sequelize, User, Task, Comment } = require('../models');
 
 const seedDatabase = async () => {
     try {
-        console.log('🌸 Se pornește popularea bazei de date...');
+        console.log('Se pornește popularea bazei de date...');
 
         await sequelize.sync({ force: true });
-        console.log('✨ Baza de date sincronizată!');
+        console.log('Baza de date sincronizată!');
 
         const admin = await User.create({
             username: 'admin',
@@ -14,7 +14,7 @@ const seedDatabase = async () => {
             password: 'admin123',
             role: 'admin'
         });
-        console.log('👑 Admin creat:', admin.email);
+        console.log('Admin creat:', admin.email);
 
         const manager1 = await User.create({
             username: 'Maria',
@@ -29,7 +29,7 @@ const seedDatabase = async () => {
             password: 'manager123',
             role: 'manager'
         });
-        console.log('💼 Manageri creați:', manager1.email, manager2.email);
+        console.log('Manageri creați:', manager1.email, manager2.email);
 
         const executor1 = await User.create({
             username: 'Ana',
@@ -54,7 +54,7 @@ const seedDatabase = async () => {
             role: 'executor',
             managerId: manager2.id
         });
-        console.log('👩‍💻 Executori creați:', executor1.email, executor2.email, executor3.email);
+        console.log('Executori creați:', executor1.email, executor2.email, executor3.email);
 
         const task1 = await Task.create({
             title: 'Design new landing page',
@@ -95,23 +95,19 @@ const seedDatabase = async () => {
             closedAt: new Date()
         });
 
-        console.log('📝 Task-uri exemplu create!');
-
-        console.log('\n🎀 ==========================================');
-        console.log('   Baza de date populată cu succes!');
-        console.log('==========================================');
-        console.log('\n📧 Conturi de test:');
-        console.log('   Admin:    admin@taskflow.com / admin123');
-        console.log('   Manager:  maria@taskflow.com / manager123');
-        console.log('   Manager:  diana@taskflow.com / manager123');
-        console.log('   Executor: ana@taskflow.com / executor123');
-        console.log('   Executor: elena@taskflow.com / executor123');
-        console.log('   Executor: sofia@taskflow.com / executor123');
-        console.log('==========================================\n');
+        console.log('Task-uri exemplu create!');
+        console.log('Baza de date populată cu succes!');
+        console.log('Conturi de test:');
+        console.log('Admin:    admin@taskflow.com / admin123');
+        console.log('Manager:  maria@taskflow.com / manager123');
+        console.log('Manager:  diana@taskflow.com / manager123');
+        console.log('Executor: ana@taskflow.com / executor123');
+        console.log('Executor: elena@taskflow.com / executor123');
+        console.log('Executor: sofia@taskflow.com / executor123');
 
         process.exit(0);
     } catch (error) {
-        console.error('❌ Eroare la populare:', error);
+        console.error('Eroare la populare:', error);
         process.exit(1);
     }
 };
