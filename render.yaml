@@ -3,7 +3,7 @@ services:
   - type: web
     name: taskflow-backend
     runtime: node
-    rootDir: TW/backend
+    rootDir: backend
     buildCommand: npm install && npm run seed
     startCommand: npm start
     envVars:
@@ -22,7 +22,7 @@ services:
   - type: static
     name: taskflow-frontend
     runtime: static
-    rootDir: TW/frontend
+    rootDir: frontend
     buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
     envVars:
