@@ -3,9 +3,11 @@ const path = require('path');
 
 let sequelize;
 
-if (process.env.DATABASE_URL) {
+const databaseUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+
+if (databaseUrl) {
     // Configuration for Cloud PostgreSQL (Persistent on Vercel)
-    sequelize = new Sequelize(process.env.DATABASE_URL, {
+    sequelize = new Sequelize(databaseUrl, {
         dialect: 'postgres',
         protocol: 'postgres',
         logging: false,
