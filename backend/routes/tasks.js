@@ -76,7 +76,7 @@ router.route('/')
             res.status(500).json({ success: false, message: 'Server error.' });
         }
     })
-    .post(authenticate, authorize('manager', 'executor'), async (req, res) => {
+    .post(authenticate, authorize('admin', 'manager', 'executor'), async (req, res) => {
         try {
             const validationResult = validateTask(req.body);
             if (!validationResult.valid) {
@@ -108,7 +108,7 @@ router.route('/')
             });
         } catch (error) {
             console.error('Error creating task:', error);
-            res.status(500).json({ success: false, message: 'Server error.' });
+            res.status(500).json({ success: false, message: 'Server error: ' + error.message });
         }
     });
 
