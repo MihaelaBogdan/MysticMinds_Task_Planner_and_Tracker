@@ -6,7 +6,8 @@
     "scripts": {
         "start": "node server.js",
         "dev": "node server.js",
-        "seed": "node seeders/seed.js"
+        "seed": "node seeders/seed.js",
+        "postinstall": "npm rebuild sqlite3"
     },
     "dependencies": {
         "bcryptjs": "^2.4.3",
