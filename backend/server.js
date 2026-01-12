@@ -20,11 +20,27 @@ const log = (req, res, next) => {
 
 app.use(log);
 app.use(cors({
-    origin: [
-        'http://localhost:5173',
-        'http://localhost:3000',
-        process.env.CLIENT_URL
-    ].filter(Boolean),
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+
+        // Allow any onrender.com subdomain
+        if (origin.endsWith('.onrender.com')) {
+            return callback(null, true);
+        }
+
+        // Allow localhost for development
+        if (origin.includes('localhost')) {
+            return callback(null, true);
+        }
+
+        // Allow CLIENT_URL if set
+        if (process.env.CLIENT_URL && origin === process.env.CLIENT_URL) {
+            return callback(null, true);
+        }
+
+        callback(null, true); // Allow all origins for now (can restrict later)
+    },
     credentials: true
 }));
 app.use(express.json());
