@@ -1,0 +1,38 @@
+services:
+  # Backend API (Express + SQLite)
+  - type: web
+    name: taskflow-backend
+    runtime: node
+    rootDir: TW/backend
+    buildCommand: npm install && npm run seed
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RENDER
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+    disk:
+      name: sqlite-data
+      mountPath: /data
+      sizeGB: 1
+
+  # Frontend (Vite/React Static Site)
+  - type: web
+    name: taskflow-frontend
+    runtime: static
+    rootDir: TW/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: taskflow-backend
+          property: hostWithScheme
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
