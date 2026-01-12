@@ -4,7 +4,10 @@ const fs = require('fs');
 
 // Determine storage path based on environment
 let storagePath;
-if (process.env.RENDER) {
+if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+    // Railway has persistent volume
+    storagePath = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'database.sqlite');
+} else if (process.env.RENDER) {
     // Render has persistent disk mounted at /data
     storagePath = '/data/database.sqlite';
 } else if (process.env.DB_STORAGE) {
