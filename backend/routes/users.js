@@ -128,10 +128,19 @@ router.patch('/:id/promote', authenticate, authorize('admin'), checkId, async (r
         executor.managerId = null;
         await executor.save();
 
-        res.json({ success: true, message: 'User promoted to manager successfully.' });
+        const updatedUser = await User.findByPk(executor.id, {
+            attributes: { exclude: ['password'] },
+            include: [{
+                model: User,
+                as: 'manager',
+                attributes: ['id', 'username', 'email']
+            }]
+        });
+
+        res.json({ success: true, message: 'User promoted to manager successfully.', data: updatedUser });
     } catch (error) {
         console.error('Error promoting user:', error);
-        res.status(500).json({ success: false, message: 'Server error.' });
+        res.status(500).json({ success: false, message: 'Server error: ' + error.message });
     }
 });
 
