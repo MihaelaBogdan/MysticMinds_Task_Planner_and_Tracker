@@ -1,0 +1,22 @@
+{
+    "version": 2,
+    "buildCommand": "cd frontend && npm install --include=dev && npx vite build",
+    "outputDirectory": "frontend/dist",
+    "functions": {
+        "api/index.js": {
+            "memory": 1024,
+            "maxDuration": 10
+        }
+    },
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ],
+    "installCommand": "npm install && cd api && npm install && cd ../backend && npm install && cd ../frontend && npm install"
+}
