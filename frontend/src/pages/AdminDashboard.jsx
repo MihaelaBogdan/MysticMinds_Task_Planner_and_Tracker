@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import Modal from '../components/Modal';
 import { usersApi, authApi } from '../services/api';
+import { API_URL as BASE_URL } from '../config.js';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
 
 function AdminDashboard() {
     const [users, setUsers] = useState([]);
